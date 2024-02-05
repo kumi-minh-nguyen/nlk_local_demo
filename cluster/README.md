@@ -6,15 +6,19 @@
 
   - Update `K8S1IP` and `K8S2IP` in playbook and inventory file (playbook.yml && hosts)
 
-  - Modify the ssh key in Vagrantfile to your ssh key (to access ssh after provision)
+  - Modify the network range in Vagrant file to match with your network if you use vagrant as well.
 
   - Update image of cafe deployment under nlk/cluster/cafe-demo/cafe.yaml
+
+    - You can rebuild the image for tea and coffee using Dockerfile under `nlk/docker`
 
     - Mac M1 (ARM): `ducthanh1989/nginx-tea-arm:latest`
 
     - Others: `nginxinc/ingress-demo`
 
   - Update image of nlk deployment under nlk/cluster/nlk/deployment.yaml
+
+    - You can rebuild the image for nlk follow the reference `https://github.com/nginxinc/nginx-loadbalancer-kubernetes`
 
     - Mac M1 (ARM): `ducthanh1989/nginx-loadbalancer-k8s-arm`
 

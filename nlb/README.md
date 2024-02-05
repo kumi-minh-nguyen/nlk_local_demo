@@ -10,6 +10,8 @@
 
   - Update `LBIP1` and `LBIP2` in playbook and inventory file (playbook.yml && hosts)
 
+- Modify the network range in Vagrant file to match with your network if you use vagrant as well.
+
 ## Provisioning
 
 - Bring up the VM by command below:
