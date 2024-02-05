@@ -1,0 +1,4 @@
+[k8s]
+192.168.88.100 ansible_ssh_user=vagrant ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+192.168.88.101 ansible_ssh_user=vagrant ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+#192.168.50.217 ansible_ssh_user=vagrant ansible_ssh_common_args='-o StrictHostKeyChecking=no'

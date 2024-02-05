@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+data:
+  nginx-hosts: "{{ LBIP }}"
+  tls-mode: "no-tls"
+  # ca-certificate: ""
+  # client-certificate: ""
+  log-level: "warn"
+metadata:
+  name: nlk-config
+  namespace: nlk

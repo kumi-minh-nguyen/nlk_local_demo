@@ -1,0 +1,167 @@
+---
+- name: Deploy the application file
+  hosts: all
+  become: true
+  become_method: sudo
+  strategy: free
+  vars:
+    LBIP1: "192.168.88.200"
+    LBIP2: "192.168.88.201"
+    myip: "{{ ansible_eth0.ipv4.address }}"
+  tasks:
+
+  - name: NGINX | create folder for nginx cert
+    file:
+      path: "{{ item }}"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+      recurse: yes
+    with_items:
+    - /etc/ssl/nginx
+
+  - name: NGINX | Copy cert to download nginx+
+    copy:
+      src: "{{ item }}"
+      dest: /etc/ssl/nginx/
+    with_items:
+    - "{{playbook_dir}}/nginx-repo.crt"
+    - "{{playbook_dir}}/nginx-repo.key"
+
+  - name: OS | Block install when OS is unbuntu
+    block: 
+    - name: OS | Update OS
+      yum:
+        name: '*'
+        state: latest
+
+    - name: OS | Install Basic packages
+      yum:
+        name: "{{ pkgs }}"
+        state: latest
+        update_cache: true
+      vars:
+        pkgs:
+          - epel-release
+          - ca-certificates
+          - wget
+
+    - name: NGINX | Download nginx.conf
+      get_url:
+        url: https://cs.nginx.com/static/files/nginx-plus-7.4.repo
+        dest: /etc/yum.repos.d/nginx-plus-7.4.repo
+
+    - name: OS | Install Basic packages
+      yum:
+        name: "{{ pkgs }}"
+        state: latest
+        update_cache: true
+      vars:
+        pkgs:
+          - nginx-plus
+          - nginx-plus-module-njs
+          - nginx-plus-module-prometheus
+        state: latest
+  
+    when: ansible_distribution == "CentOS"
+    tags: os
+
+  - name: OS | Block install when OS is unbuntu
+    block: 
+    - name: OS | Update OS
+      apt:
+        upgrade: yes
+        update_cache: yes
+        cache_valid_time: 86400 #One day
+
+    - name: OS | Install Basic packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - lsb-release
+          - gnupg2
+          - wget
+          - ubuntu-keyring
+        state: latest
+        update_cache: true
+    - name: NGINX | Add nginx  GPG apt Key
+      apt_key:
+        url: "{{ item.src }}"
+        keyring: "{{ item.dest }}"
+        state: present
+      with_items:
+      - {"src":"https://cs.nginx.com/static/keys/nginx_signing.key","dest":"/usr/share/keyrings/nginx-archive-keyring.gpg"}
+      - {"src":"https://cs.nginx.com/static/keys/app-protect-security-updates.key","dest":"/usr/share/keyrings/app-protect-security-updates.gpg"}
+
+    - name: NGINX | Add nginx Repository
+      shell : |
+        printf "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://pkgs.nginx.com/plus/ubuntu `lsb_release -cs` nginx-plus\n" | tee /etc/apt/sources.list.d/nginx-plus.list
+      tags: repo
+
+    - name: NGINX | Download nginx.conf
+      get_url:
+        url: https://cs.nginx.com/static/files/90pkgs-nginx
+        dest: /etc/apt/apt.conf.d/90pkgs-nginx
+      tags: repo
+      
+    - name: NGINX | Install nginx+ and other module
+      apt:
+        pkg:
+          - nginx-plus
+          - nginx-plus-module-njs
+          - nginx-plus-module-prometheus
+        state: latest
+        update_cache: true
+      tags: os
+
+    - name: OS | Update OS
+      apt:
+        upgrade: yes
+        update_cache: yes
+        cache_valid_time: 86400 #One day
+      tags: os
+    when: ansible_distribution == "Ubuntu"
+    tags: os
+
+  - name: NGINX | Create folder for cluster
+    file:
+      path: "{{ item }}"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+      recurse: yes
+    with_items:
+    - /etc/nginx/stream
+
+  - name: NGINX | Copy configuration
+    copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+    with_items:
+    - {"src":"{{playbook_dir}}/template/clusters.conf","dest":"/etc/nginx/conf.d/clusters.conf"}
+    - {"src":"{{playbook_dir}}/template/dashboard.conf","dest":"/etc/nginx/conf.d/dashboard.conf"}
+    - {"src":"{{playbook_dir}}/template/default-http.conf","dest":"/etc/nginx/conf.d/default.conf"}
+    - {"src":"{{playbook_dir}}/template/prometheus.conf","dest":"/etc/nginx/conf.d/prometheus.conf"}
+    - {"src":"{{playbook_dir}}/template/nginx.conf","dest":"/etc/nginx/nginx.conf"}
+
+  - name: NGINX | Deploy template
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+    with_items:
+    - {"src":"{{playbook_dir}}/template/zonesync.conf.j2","dest":"/etc/nginx/stream/zonesync.conf"}
+    
+  - name: NGINX | Create self-sign cert
+    shell: openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout default.key -out default.crt -subj "/CN=NLK"
+    args:
+      chdir: /etc/ssl/nginx
+
+  - name: NGINX | Enable the nginx service and start it
+    systemd:
+      name: nginx
+      state: restarted
+      enabled: yes
+      daemon-reload: yes

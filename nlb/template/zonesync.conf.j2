@@ -1,0 +1,19 @@
+# NGINX Loadbalancer for Kubernetes
+# NGINX Zone Sync configuration, for KVstore split
+# Chris Akker, Apr 2023
+# Stream Zone Sync block
+# 2 NGINX Plus nodes 
+# https://docs.nginx.com/nginx/admin-guide/high-availability/zone_sync/
+#
+#### zonesync.conf
+
+server {
+   zone_sync;
+
+   listen 9001;
+
+   # cluster of 2 nodes
+   zone_sync_server {{ LBIP1 }}:9001; #update here if ip is changed
+   zone_sync_server {{ LBIP2 }}:9001; #update here if ip is changed
+
+   }

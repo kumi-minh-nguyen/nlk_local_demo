@@ -1,0 +1,23 @@
+[ req ]
+distinguished_name = dn
+req_extensions = req_ext
+prompt = no
+
+[ dn ]
+C=SG
+ST=Singapore
+L=Singapore
+O=F5 Pte Ltd
+OU=F5Lab
+CN=cafe.example.com
+
+[ req_ext ]
+extendedKeyUsage = serverAuth, clientAuth, codeSigning, emailProtection
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = example.com
+DNS.2 = cafe.example.com
+DNS.3 = *.example.com

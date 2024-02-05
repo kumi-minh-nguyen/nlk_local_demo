@@ -1,0 +1,500 @@
+---
+- name: Deploy the application file
+  hosts: all
+  become: true
+  become_method: sudo
+  strategy: free
+  vars:
+    namespace: "nginx-ingress"
+    secretregistry: "regcred"
+    K8S1IP: "192.168.88.100"
+    K8S2IP: "192.168.88.101"
+    LBIP1: "192.168.88.200"
+    LBIP2: "192.168.88.201"
+    monitoringnode: "{{ K8S1IP }}"
+    LBIP: "http://{{ LBIP1 }}:9000/api,http://{{ LBIP2 }}:9000/api"
+    jwt: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRyaWFsIn0.eyJpc3MiOiJuZ2lueCBpc3N1ZXIiLCJpYXQiOjE2OTYzMTI0NDMsImp0aSI6IjE0NjkyIiwic3ViIjoiSTAwMDEzMTgzMSIsImV4cCI6MTcxMTg2NDQ0M30.Y03SY5BhCUwXFUlTNb_nk_ZbSZo2r-sojuq5q6ID9BzKxFGXQwlJ0Kjdydhh2eWfCDRtFKMT2b0GA4BPiNDyQiMWTFj1saHwaa_WEPhyW5GRh9ajUubTIUwvdgSVCVPSJdT1ZS9yzC5UASvwV_MLE6uYzXU_PuTAl3WPinkWLaOgGhEflngmNb95sRQcRhH-iTQneaUXxToVZTDfV7VE2Z4kQMn2b61t_sGX3CwPGIhFyuFiWTemDHUY9WrWOnmUYaaeVl5Ag8bwTlBj5SLEhd7M7QBiKxgFQqxVNQImCkW3q1gpFmvYVcXQakE8e-rkM3EfYCk0SWHvyXR1ng2mFKZGYRgQTa4nyVlVICrKQbGq-p4n7OdCNblX_tF58HV4YTkYA4VMwPPiVX95snkjtDT8c2_0ePpfroa02cuWE9g6sn4gySsl_acBRJm_g5CATTKaQR2O1dvItLpSLe1tQ9HNMnywjPDgiFaFfKVZJQlga94VspVTzixQ_zzaBGMY"
+  tasks:
+  - name: block prometheus
+    block:
+    - name: PROMETHEUS | create folder for prometheus config
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+        recurse: yes
+      with_items:
+      - "/root/prometheus"
+
+    - name: PROMETHEUS | Deploy template
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+      with_items:
+      - {"src":"{{playbook_dir}}/template/prometheus/prometheus.yml.j2","dest":"/root/prometheus/prometheus.yml"}
+    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+
+  - name: NGINX+ INGRESS CONTROLLER | Copy all the required file
+    copy:
+      src: "{{ item }}"
+      dest: "/root/"
+    with_items:
+    - "{{ playbook_dir }}/template/ingress-controller"
+    - "{{ playbook_dir }}/template/cafe-demo"
+    - "{{ playbook_dir }}/template/nlk"
+    - "{{ playbook_dir }}/template/grafana"
+    tags: nginx
+
+  - name: NGINX+ INGRESS CONTROLLER | Deploy template
+    template:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+    with_items:
+    - {"src":"{{playbook_dir}}/template/nlk/loadbalancer-cluster1.yaml.j2","dest":"/root/nlk/loadbalancer-cluster1.yaml"}
+    - {"src":"{{playbook_dir}}/template/nlk/loadbalancer-cluster2.yaml.j2","dest":"/root/nlk/loadbalancer-cluster2.yaml"}
+    - {"src":"{{playbook_dir}}/template/nlk/configmap.yaml.j2","dest":"/root/nlk/configmap.yaml"}
+
+
+  - name: install when it is ubuntu
+    block:
+    - name: OS | Update OS
+      apt:
+        upgrade: yes
+        update_cache: yes
+        cache_valid_time: 86400 #One day
+      tags: os
+
+    - name: OS | Install Basic packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - build-essential
+          - python
+          - make
+          - wget
+          - g++
+          - git
+          - gpg
+        state: latest
+        update_cache: true
+      tags: os
+    when: ansible_distribution == "Ubuntu"
+
+  - name: OS | Block install when OS is unbuntu
+    block:
+    - name: OS | Update OS
+      yum:
+        name: '*'
+        state: latest
+
+    - name: OS | Install Basic packages
+      yum:
+        name: "{{ pkgs }}"
+        state: latest
+        update_cache: true
+      vars:
+        pkgs:
+          - epel-release
+          - ca-certificates
+          - wget
+          - yum-utils
+    when: ansible_distribution == "CentOS"
+
+  - name: OS | Disable SWAP
+    shell: swapoff -a
+    tags: docker
+  - name: OS | Disable SWAP in fstab
+    replace:
+      path: /etc/fstab
+      regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+      replace: '# \1'
+    tags: os
+  - name: OS | Set kernel parameters
+    sysctl:
+      name: "{{ item.name }}"
+      value: "{{ item.value }}"
+      sysctl_file: /etc/sysctl.d/kubernetes.conf
+      reload: false
+    loop:
+    - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { name: 'net.ipv4.ip_forward', value: '1' }
+    tags: os
+  - name: OS | Set modprobe
+    modprobe:
+      name: "{{ item }}"
+      state: present
+      persistent: present
+    loop:
+    - overlay
+    - br_netfilter
+    tags: os
+
+  - name: OS | Block install when OS is unbuntu
+    block: 
+    - name: NGINX | Download nginx.conf
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+    - name: OS | Install Basic packages
+      yum:
+        name: "{{ pkgs }}"
+        state: latest
+        update_cache: true
+      vars:
+        pkgs:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+
+    - name: configuring the container runtime including its cgroup driver
+      blockinfile:
+        create: true
+        path: /etc/yum.repos.d/kubernetes.repo
+        block: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg 
+          https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    - name: Install Kubernetes
+      yum: 
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - kubelet 
+          - kubeadm 
+          - kubectl
+    when: ansible_distribution == "CentOS"
+
+
+  - name: install when it is ubuntu
+    block:
+    - name: DOCKER | Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      tags: docker
+
+    - name: DOCKER | Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+      tags: docker
+
+    - name: DOCKER | Update apt and install docker-ce
+      apt:
+        name: docker-ce
+        state: latest
+        update_cache: true
+      tags: docker
+
+    - name: K8S | Add k8s GPG apt Key
+      apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key
+        state: present
+      tags: docker
+
+    - name: add Kubernetes' APT repository
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /"
+        state: present
+        update_cache: yes
+
+    - name: install Containerd
+      apt:
+        name: containerd.io
+        state: present
+    when: ansible_distribution == "Ubuntu"
+
+  - name: create Containerd directory
+    file:
+      path: "{{ item }}"
+      state: directory
+    with_items:
+    - /etc/containerd
+
+  - name: add Containerd configuration
+    shell: /usr/bin/containerd config default > /etc/containerd/config.toml
+
+  - name: configuring the systemd cgroup driver for Containerd
+    lineinfile:
+      path: /etc/containerd/config.toml
+      regexp: '            SystemdCgroup = false'
+      line: '            SystemdCgroup = true'
+
+  - name: configuring the container runtime including its cgroup driver
+    blockinfile:
+      create: true
+      path: /etc/crictl.yaml
+      block: |
+        runtime-endpoint: unix:///var/run/containerd/containerd.sock
+        image-endpoint: unix:///var/run/containerd/containerd.sock
+        timeout: 2
+        debug: true
+        pull-image-on-create: false
+
+  - name: enable the Containerd service and start it
+    systemd:
+      name: containerd
+      state: restarted
+      enabled: yes
+      daemon-reload: yes
+
+  - name: block to provision prometheus
+    block:
+    - name: enable the docker container service and start it
+      systemd:
+        name: docker
+        state: restarted
+        enabled: yes
+        daemon-reload: yes
+
+    - name: PROMETHEUS_EXPORTERS | Add node_exporter container
+      docker_container:
+        pull: "{{ true if (update_docker_image is defined and update_docker_image) else false }}"
+        restart_policy: always
+        detach: true
+        name: prometheus
+        networks_cli_compatible: true
+        ports:
+        - "9090:9090"
+        volumes:
+        -  "/root/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
+        image: prom/prometheus
+        state: started
+
+    - name: GRAFANA Configration| Create grafana container
+      docker_container:
+        restart_policy: always
+        detach: true
+        name: grafana
+        image: grafana/grafana
+        ports:
+        - "3000:3000"
+        networks_cli_compatible: true
+        volumes:
+          - grafana:/var/lib/grafana
+      tags: grafana
+
+    - name: GRAFANA Configration| Pause for 1 minutes to build app cache
+      shell: sleep 30
+      tags: grafana
+      
+    - name: GRAFANA Configration | Create prometheus datasource
+      community.grafana.grafana_datasource:
+        grafana_url: "http://{{ monitoringnode }}:3000"
+        grafana_user: "admin"
+        grafana_password: "admin"
+        name: prometheus
+        ds_type: prometheus
+        ds_url: "http://{{ monitoringnode }}:9090"
+      register: uuid
+      tags: grafana
+      become: false
+      
+    - name: GRAFANA Configration | Set fact for the data source
+      set_fact:
+        NEWUUID: "{{ uuid.datasource.uid }}"  
+      tags: grafana
+      
+    - name: GRAFANA Configration | Update the existing file before import
+      replace:
+        path : "{{ item }}"
+        regexp: '("uid": )"EszmC2Y4z"'
+        replace: '\1"{{ NEWUUID }}"'
+      with_items:
+      - "/root/grafana/grafana-dashboard.json"
+      tags: grafana
+
+    - name: GRAFANA Configration | Import Grafana dashboard
+      community.grafana.grafana_dashboard:
+        grafana_url: "http://{{ monitoringnode }}:3000"
+        grafana_user: "admin"
+        grafana_password: "admin"
+        state: present
+        commit_message: Updated by ansible
+        overwrite: yes
+        path: "{{ item }}"
+      with_items:
+      - "/root/grafana/grafana-dashboard.json"
+    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+    tags: prometheus,grafana
+
+  - name: install when it is ubuntu
+    block:
+    - name: install Kubelet
+      apt:
+        name: kubelet=1.28.*
+        state: present
+        update_cache: true
+
+    - name: install Kubeadm
+      apt:
+        name: kubeadm=1.28.*
+        state: present
+
+    - name: install Kubectl
+      apt:
+        name: kubectl=1.28.*
+        state: present
+        force: yes    
+    when: ansible_distribution == "Ubuntu"
+
+  - name: enable the Kubelet service, and enable it persistently
+    service:
+      name: kubelet
+      enabled: yes
+
+  - name: create an empty file for Kubeadm configuring
+    copy:
+      content: ""
+      dest: /etc/kubernetes/kubeadm-config.yaml
+      force: no
+
+  - name: configuring the container runtime including its cgroup driver
+    blockinfile:
+      create: true
+      path: /etc/kubernetes/kubeadm-config.yaml
+      block: |
+            apiVersion: kubeadm.k8s.io/v1beta3
+            kind: InitConfiguration
+            nodeRegistration:
+              taints: []
+            ---
+            kind: ClusterConfiguration
+            apiVersion: kubeadm.k8s.io/v1beta3
+            networking:
+              podSubnet: "10.244.0.0/16"
+            ---
+            kind: KubeletConfiguration
+            apiVersion: kubelet.config.k8s.io/v1beta1
+            runtimeRequestTimeout: "15m"
+            cgroupDriver: "systemd"
+            systemReserved:
+              cpu: 100m
+              memory: 350M
+            kubeReserved:
+              cpu: 100m
+              memory: 50M
+            enforceNodeAllocatable:
+            - pods
+  - name: initialize the cluster (this could take some time)
+    shell: kubeadm init --config /etc/kubernetes/kubeadm-config.yaml >> cluster_initialized.log
+    args:
+      chdir: /home/vagrant
+      creates: cluster_initialized.log
+
+  - name: Pause for 2 minutes to build app cache
+    shell: sleep 30
+
+  - name: create .kube directory
+    file:
+      path: "{{ item }}"
+      state: directory
+      mode: 0755
+    with_items:
+    - "/home/vagrant/.kube"
+    - "/root/.kube"
+
+  - name: copy admin.conf to user's kube config
+    copy:
+      src: /etc/kubernetes/admin.conf
+      dest: "{{ item.dest }}"
+      remote_src: yes
+      owner: "{{ item.owner }}"
+    with_items:
+    - { dest: "/home/vagrant/.kube/config", owner: "vagrant"}
+    - { dest: "/root/.kube/config", owner: "root"}
+
+  - name: install Pod network
+    shell: kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml >> pod_network_setup.log
+    args:
+      chdir: /home/vagrant
+      creates: pod_network_setup.log
+    tags: nginx
+  # - name: k8s | untaint so can deploy workload 
+  #   shell: |
+  #       NODE_NAME=$(hostname)
+  #       # Check if the taint already exists
+  #       if kubectl get node "${NODE_NAME}" -o=jsonpath="{.spec.taints[?(@.key=='node-role.kubernetes.io/control-plane')].effect}" | grep "NoSchedule"
+  #       then
+  #         kubectl taint node "${NODE_NAME}" "node-role.kubernetes.io/control-plane:NoSchedule-"
+  #       fi
+  #   tags: k8s
+
+  - name: NGINX+ INGRESS CONTROLLER | Create a k8s namespace nginx
+    shell: kubectl create namespace {{ namespace }} --dry-run=client -o yaml | kubectl apply -f -
+    tags: nginx
+
+  - name: NGINX+ INGRESS CONTROLLER | Create a secret to download image
+    shell: | 
+      kubectl create secret docker-registry {{ secretregistry }} \
+      --docker-server=private-registry.nginx.com --docker-username={{ jwt }} \
+      --docker-password=none -n {{ namespace }} \
+      --dry-run=client \
+      -o yaml | kubectl apply -f -
+    tags: nginx
+
+  - name: NGINX+ INGRESS CONTROLLER | Apply all the file
+    shell: |
+       kubectl apply -f ns-and-sa.yaml
+       kubectl apply -f rbac.yaml
+       kubectl apply -f default-server-secret.yaml
+       kubectl apply -f nginx-config.yaml
+       kubectl apply -f ingress-class.yaml
+       kubectl apply -f crds.yaml
+       kubectl apply -f nginx-plus-ingress.yaml
+    args:
+      chdir: /root/ingress-controller
+    tags: k8apply
+
+  - name: CAFE-DEMO | Apply all the file
+    shell: |
+      kubectl apply -f cafe-secret.yaml
+      kubectl apply -f cafe.yaml
+      kubectl apply -f cafe-virtualserver.yaml
+    args:
+      chdir: /root/cafe-demo
+    tags: k8apply
+
+  - name: NLK NGINX Loadbalancer | Create a k8s namespace nlk
+    shell: kubectl create namespace nlk --dry-run=client -o yaml | kubectl apply -f -
+    tags: k8apply
+
+  - name: NLK NGINX Loadbalancer | Create secret,svc, cluster role
+    shell: |
+      kubectl apply -f secret.yaml 
+      kubectl apply -f serviceaccount.yaml 
+      kubectl apply -f clusterrole.yaml 
+      kubectl apply -f clusterrolebinding.yaml
+      kubectl apply -f configmap.yaml
+      kubectl apply -f deployment.yaml
+    args:
+      chdir: /root/nlk
+    tags: k8apply
+
+  - name: NLK NGINX Loadbalancer | Create NLK LoadBalancer Service
+    shell: |
+      kubectl apply -f loadbalancer-cluster1.yaml
+    args:
+      chdir: /root/nlk
+    tags: k8apply    
+    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+
+  - name: NLK NGINX Loadbalancer | Create NLK LoadBalancer Service
+    shell: |
+      kubectl apply -f loadbalancer-cluster2.yaml
+    args:
+      chdir: /root/nlk
+    when: inventory_hostname == {{ K8S2IP }} or inventory_hostname == "K8S2"
+    tags: k8apply,final
