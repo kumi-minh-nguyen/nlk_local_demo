@@ -12,7 +12,7 @@
 
     - You can rebuild the image for tea and coffee using Dockerfile under `nlk/docker`
 
-    - Mac M1 (ARM): `ducthanh1989/nginx-tea-arm:latest`
+    - Mac M1 (ARM): `minhkumi1988/nginx-tea-arm:latest`
 
     - Others: `nginxinc/ingress-demo`
 
@@ -20,7 +20,7 @@
 
     - You can rebuild the image for nlk follow the reference `https://github.com/nginxinc/nginx-loadbalancer-kubernetes`
 
-    - Mac M1 (ARM): `ducthanh1989/nginx-loadbalancer-k8s-arm`
+    - Mac M1 (ARM): `minhkumi1988/nginx-loadbalancer-k8s-arm`
 
     - Others: `ghcr.io/nginxinc/nginx-loadbalancer-kubernetes:latest`
 

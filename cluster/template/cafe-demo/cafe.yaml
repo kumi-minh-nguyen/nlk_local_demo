@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: coffee
-        image: ducthanh1989/nginx-coffee-arm:latest  # upgraded Cafe Docker image
+        image: minhkumi1988/nginx-coffee-arm:latest  # upgraded Cafe Docker image
         ports:
         - containerPort: 80
 ---
@@ -49,7 +49,7 @@ spec:
     spec:
       containers:
       - name: tea
-        image: ducthanh1989/nginx-tea-arm:latest
+        image: minhkumi1988/nginx-tea-arm:latest
         ports:
         - containerPort: 80
 ---

@@ -34,7 +34,7 @@
         dest: "{{ item.dest }}"
       with_items:
       - {"src":"{{playbook_dir}}/template/prometheus/prometheus.yml.j2","dest":"/root/prometheus/prometheus.yml"}
-    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+    when: inventory_hostname == K8S1IP or inventory_hostname == "K8S1"
 
   - name: NGINX+ INGRESS CONTROLLER | Copy all the required file
     copy:
@@ -327,7 +327,7 @@
         path: "{{ item }}"
       with_items:
       - "/root/grafana/grafana-dashboard.json"
-    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+    when: inventory_hostname == K8S1IP or inventory_hostname == "K8S1"
     tags: prometheus,grafana
 
   - name: install when it is ubuntu
@@ -489,12 +489,12 @@
     args:
       chdir: /root/nlk
     tags: k8apply    
-    when: inventory_hostname == {{ K8S1IP }} or inventory_hostname == "K8S1"
+    when: inventory_hostname == K8S1IP or inventory_hostname == "K8S1"
 
   - name: NLK NGINX Loadbalancer | Create NLK LoadBalancer Service
     shell: |
       kubectl apply -f loadbalancer-cluster2.yaml
     args:
       chdir: /root/nlk
-    when: inventory_hostname == {{ K8S2IP }} or inventory_hostname == "K8S2"
+    when: inventory_hostname == K8S2IP or inventory_hostname == "K8S2"
     tags: k8apply,final

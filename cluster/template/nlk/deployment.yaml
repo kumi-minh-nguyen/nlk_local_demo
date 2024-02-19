@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: nginx-loadbalancer-kubernetes
-          image: ducthanh1989/nginx-loadbalancer-k8s-arm
+          image: minhkumi1988/nginx-loadbalancer-k8s-arm
           imagePullPolicy: Always
           ports:
             - name: http
